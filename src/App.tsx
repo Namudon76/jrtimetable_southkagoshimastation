@@ -37,27 +37,29 @@ const WARNING_NAMES = {
   "30": { name: "大雨注意報",     level: "advisory", color: "#f57c00" },
   "33": { name: "洪水注意報",     level: "advisory", color: "#f57c00" },
 };
+type WarningInfo = { name: string; level: string; color: string };
+type TrainTime   = { h: number; m: number; dest: string; type: string };
 
 // ─── 固定背景 ────────────────────────────────────────
 const BG = "linear-gradient(170deg,#0a1628 0%,#0e2140 50%,#0a1a30 100%)";
 
 // ─── ユーティリティ ──────────────────────────────────
-const pad   = n => String(n).padStart(2, "0");
-const toMin = (h, m) => h * 60 + m;
+const pad   = (n: number) => String(n).padStart(2, "0");
+const toMin = (h: number, m: number) => h * 60 + m;
 
-function getNextTrains(trains, nowMin, count = 5) {
-  const remaining = trains.filter(t => toMin(t.h, t.m) >= nowMin);
+function getNextTrains(trains: TrainTime[], nowMin: number, count = 5): TrainTime[] {
+  const remaining = trains.filter((t: TrainTime) => toMin(t.h, t.m) >= nowMin);
   return remaining.slice(0, count);
 }
 
-const isHoliday = d => d.getDay() === 0 || d.getDay() === 6;
+const isHoliday = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
 const DEST_C = {
   "鹿児島中央":"#c62828","鹿児島":"#b71c1c","山川":"#1565c0",
   "指宿":"#0d47a1","枕崎":"#003a7a","喜入":"#0277bd",
   "慈眼寺":"#0288d1","五位野":"#039be5",
 };
-const destBg = d => DEST_C[d] || "#546e7a";
+const destBg = (d: string) => (DEST_C as Record<string, string>)[d] || "#546e7a";
 
 // ─── 時刻表データ ────────────────────────────────────
 const TT = {
@@ -171,9 +173,9 @@ const TT = {
 // ════════════════════════════════════════════════════
 export default function App() {
   const [now,        setNow]        = useState(new Date());
-  const [alerts,     setAlerts]     = useState([]);
-  const [infoUpdated,setInfoUpdated]= useState(null);
-  const [delays,     setDelays]     = useState({ up: 0, down: 0 });
+  const [alerts,     setAlerts]     = useState<WarningInfo[]>([]);
+  const [infoUpdated,setInfoUpdated]= useState<Date | null>(null);
+  const [delays]                    = useState({ up: 0, down: 0 });
   const [portrait,   setPortrait]   = useState(
     typeof window !== "undefined" ? window.innerHeight > window.innerWidth : false
   );
@@ -196,20 +198,24 @@ export default function App() {
     try {
       const res  = await fetch(JMA_WARNING_URL);
       const data = await res.json();
-      const areaType1 = (data.areaTypes || []).find(a =>
+      type JmaWarning  = { code: number; status: string };
+      type JmaArea     = { code: number | string; warnings?: JmaWarning[] };
+      type JmaAreaType = { areas?: JmaArea[] };
+      const areaTypes: JmaAreaType[] = data.areaTypes || [];
+      const areaType1 = areaTypes.find(a =>
         (a.areas || []).some(ar => String(ar.code) === KAGOSHIMA_CITY_CODE)
       );
       const area = areaType1?.areas?.find(a => String(a.code) === KAGOSHIMA_CITY_CODE);
-      const active = [];
+      const active: WarningInfo[] = [];
       if (area?.warnings) {
         area.warnings.forEach(w => {
           if (w.status === "発表" || w.status === "継続") {
-            const info = WARNING_NAMES[String(w.code)];
+            const info = (WARNING_NAMES as Record<string, WarningInfo>)[String(w.code)];
             if (info) active.push(info);
           }
         });
       }
-      const levelOrder = { special: 0, warning: 1, advisory: 2 };
+      const levelOrder: Record<string, number> = { special: 0, warning: 1, advisory: 2 };
       active.sort((a, b) => levelOrder[a.level] - levelOrder[b.level]);
       setAlerts(active);
       setInfoUpdated(new Date());
@@ -409,7 +415,13 @@ export default function App() {
 // ════════════════════════════════════════════════════
 //  警報・注意報バナー
 // ════════════════════════════════════════════════════
-function AlertBanner({ alerts, updStr, hasSpecial, hasWarning }) {
+interface AlertBannerProps {
+  alerts: WarningInfo[];
+  updStr: string;
+  hasSpecial: boolean;
+  hasWarning: boolean;
+}
+function AlertBanner({ alerts, updStr, hasSpecial, hasWarning }: AlertBannerProps) {
   if (alerts.length === 0) return null;
 
   const topLevel = hasSpecial ? "special" : hasWarning ? "warning" : "advisory";
@@ -458,7 +470,17 @@ function AlertBanner({ alerts, updStr, hasSpecial, hasWarning }) {
 // ════════════════════════════════════════════════════
 //  列車パネル
 // ════════════════════════════════════════════════════
-function TrainPanel({ label, sublabel, icon, accent, trains, nowMin, delay, compact }) {
+interface TrainPanelProps {
+  label: string;
+  sublabel?: string;
+  icon?: string;
+  accent?: string;
+  trains: TrainTime[];
+  nowMin?: number;
+  delay?: number;
+  compact?: boolean;
+}
+function TrainPanel({ label, sublabel, icon, accent, trains, delay, compact }: TrainPanelProps) {
 
   return (
     <div style={{
@@ -480,7 +502,7 @@ function TrainPanel({ label, sublabel, icon, accent, trains, nowMin, delay, comp
           <div style={{ fontSize:compact?13:15, fontWeight:700, letterSpacing:".05em" }}>{label}</div>
           <div style={{ fontSize:9, opacity:.45, letterSpacing:".1em" }}>{sublabel}</div>
         </div>
-        {delay>0 && (
+        {(delay ?? 0)>0 && (
           <span style={{
             fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:5,
             background:"rgba(255,80,30,.3)", border:"1px solid rgba(255,80,30,.45)", color:"#ff8a65",
